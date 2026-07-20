@@ -22,7 +22,7 @@ import {
   TransactionInstruction, TransactionMessage, VersionedTransaction,
 } from '@solana/web3.js';
 import {
-  TOKEN_PROGRAM_ID, getAssociatedTokenAddressSync,
+  TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID, getAssociatedTokenAddressSync,
   createAssociatedTokenAccountIdempotentInstruction,
 } from '@solana/spl-token';
 
@@ -83,6 +83,57 @@ function depositSolIx(owner, ata, lamports) {
 const memoIx = (text) =>
   new TransactionInstruction({ programId: MEMO_PROGRAM, keys: [], data: Buffer.from(text, 'utf8') });
 
+// The exact production direct-stake instruction set — create-ATA (idempotent) +
+// SanctumSplMulti DepositSol + SPL Memo `direct:<vote>`. Shared by the signed and
+// the build-only (--owner) paths, so the UNSIGNED transaction a treasury verifies
+// is byte-identical to the one that ultimately gets signed and broadcast.
+function directStakeIxs(owner, validator, lamports) {
+  const ata = getAssociatedTokenAddressSync(DEFINSOL_MINT, owner, true);
+  const ixs = [
+    createAssociatedTokenAccountIdempotentInstruction(owner, ata, owner, DEFINSOL_MINT),
+    depositSolIx(owner, ata, lamports),
+    memoIx(`direct:${validator}`),
+  ];
+  return { ata, ixs };
+}
+
+// Build-only: compile an UNSIGNED v0 transaction, decode it for verification, and
+// emit base64 for offline signing (Ledger / air-gapped / Squads multisig). No
+// private key is loaded or used. With --blockhash it builds fully offline (no RPC,
+// no simulation). Signatures are left as zero placeholders for the offline signer.
+async function emitUnsigned(conn, owner, ixs, { validator, amt, lamports, ata, blockhash }) {
+  const offline = !!blockhash;
+  let bh = blockhash, lastValid = null;
+  if (!offline) {
+    const r = await conn.getLatestBlockhash('confirmed');
+    bh = r.blockhash; lastValid = r.lastValidBlockHeight;
+  }
+  const msg = new TransactionMessage({ payerKey: owner, recentBlockhash: bh, instructions: ixs }).compileToV0Message();
+  const tx = new VersionedTransaction(msg);
+  const b64 = Buffer.from(tx.serialize()).toString('base64');
+
+  console.log('build-only direct-stake — UNSIGNED transaction (no private key was loaded)\n');
+  console.log(`  fee payer / owner :  ${owner.toBase58()}`);
+  console.log(`  amount            :  ${amt} SOL   (${lamports} lamports)`);
+  console.log(`  definSOL recipient:  ${ata.toBase58()}   (owner's associated token account)`);
+  console.log(`  direct memo       :  "direct:${validator}"`);
+  console.log(`  recent blockhash  :  ${bh}${lastValid != null ? `   (valid to block ${lastValid}; ~60–90s — refresh in your signer if it expires)` : '   (supplied via --blockhash)'}`);
+  console.log('\n  instructions (verify these against your own decode of the base64 below):');
+  console.log(`    1. create ATA (idempotent)   ${ASSOCIATED_TOKEN_PROGRAM_ID.toBase58()}   → ${ata.toBase58()} for owner, mint definSOL`);
+  console.log(`    2. DepositSol (ix ${DEPOSIT_SOL_IX})          ${SANCTUM_SPL_MULTI.toBase58()}   → ${amt} SOL into pool ${POOL.toBase58()}`);
+  console.log(`    3. memo                      ${MEMO_PROGRAM.toBase58()}   → "direct:${validator}"`);
+
+  if (!offline) {
+    const { value } = await conn.simulateTransaction(tx, { sigVerify: false, replaceRecentBlockhash: true });
+    if (value.err) { console.log(`\n  ✗ simulation failed: ${JSON.stringify(value.err)}`); process.exitCode = 2; }
+    else console.log(`\n  ✓ simulation OK (${value.unitsConsumed ?? '?'} CU) — the accounts + memo above are exactly what will execute.`);
+  } else {
+    console.log('\n  (offline: simulation skipped — no RPC. Decode the base64 in your own tooling to verify.)');
+  }
+  console.log(`\n--- unsigned transaction (base64) ---\n${b64}\n--- end unsigned transaction ---`);
+  console.log(`\nSign as ${owner.toBase58()} on your offline / hardware / multisig signer, then broadcast.`);
+}
+
 // Build + (simulate | send) a v0 transaction from a set of instructions.
 async function submit(conn, signer, instructions, broadcast) {
   const { blockhash, lastValidBlockHeight } = await conn.getLatestBlockhash('confirmed');
@@ -112,23 +163,29 @@ async function confirmSig(conn, signature, timeoutMs = 60_000) {
   throw new Error(`confirmation timed out (it may still land — check https://solscan.io/tx/${signature})`);
 }
 
-async function cmdDirectStake({ validator, amount, keypair, rpc: url, broadcast }) {
+async function cmdDirectStake({ validator, amount, keypair, owner: ownerArg, rpc: url, blockhash, broadcast }) {
   if (!validator || !B58_RE.test(validator)) die('--validator <vote-pubkey> is required');
   const amt = Number(amount);
   if (!(amt > 0)) die('--amount <SOL> must be > 0');
+  const lamports = Math.round(amt * LAMPORTS_PER_SOL);
+
+  // Build-only (treasury / hardware / air-gapped / multisig): --owner <pubkey>,
+  // no private key is loaded. Emits an UNSIGNED transaction to verify + sign offline.
+  if (ownerArg) {
+    if (!B58_RE.test(ownerArg)) die('--owner <pubkey> is not a valid address');
+    if (broadcast) die('--owner is build-only (there is no key to sign) — drop --broadcast; sign & submit the emitted transaction offline');
+    const owner = new PublicKey(ownerArg);
+    const { ata, ixs } = directStakeIxs(owner, validator, lamports);
+    await emitUnsigned(rpc(url), owner, ixs, { validator, amt, lamports, ata, blockhash });
+    return;
+  }
+
+  // Signed path (local keypair).
   const signer = loadKeypair(keypair);
-  const conn = rpc(url);
-  const owner = signer.publicKey;
-  const ata = getAssociatedTokenAddressSync(DEFINSOL_MINT, owner, true);
-  const ixs = [
-    createAssociatedTokenAccountIdempotentInstruction(owner, ata, owner, DEFINSOL_MINT),
-    depositSolIx(owner, ata, Math.round(amt * LAMPORTS_PER_SOL)),
-    memoIx(`direct:${validator}`),
-  ];
-  console.log(`direct-stake ${amt} SOL from ${owner.toBase58()} → validator ${validator}`);
+  const { ixs } = directStakeIxs(signer.publicKey, validator, lamports);
+  console.log(`direct-stake ${amt} SOL from ${signer.publicKey.toBase58()} → validator ${validator}`);
   console.log(`  (deposit SOL → definSOL, tagged \`direct:${validator}\`; directed at the next optimiser cycle, + up to 3.5× matching)`);
-  const r = await submit(conn, signer, ixs, broadcast);
-  report(r);
+  report(await submit(rpc(url), signer, ixs, broadcast));
 }
 
 async function cmdStake({ amount, keypair, rpc: url, broadcast }) {
@@ -235,16 +292,25 @@ Options:
   --rpc <url>        RPC endpoint (default: $SOLANA_RPC or mainnet-beta)
   --broadcast        actually sign & send (default: simulate only)
 
+Build-only (treasuries / hardware / multisig — NO private key is loaded):
+  direct-stake --validator <vote> --amount <SOL> --owner <pubkey>
+    Prints a full decode (owner, amount, ATA, direct: memo, blockhash), simulates
+    it unsigned, and emits an UNSIGNED base64 transaction to verify + sign offline
+    (Ledger / air-gapped / Squads). Add --blockhash <hash> to build fully offline
+    (skips the RPC fetch + simulation).
+
 Examples:
   definity-stake validators --query stakecraft
   definity-stake direct-stake --validator BDn3HiXMTym7ZQofWFxDb7ZGQX6GomQzJYKfytTAqd5g --amount 1
   definity-stake direct-stake --validator BDn3Hi… --amount 1 --broadcast
+  definity-stake direct-stake --validator BDn3Hi… --amount 1 --owner <treasuryPubkey>   # unsigned
 `;
 
 const { values, positionals } = parseArgs({
   allowPositionals: true,
   options: {
     validator: { type: 'string' }, amount: { type: 'string' }, keypair: { type: 'string' },
+    owner: { type: 'string' }, blockhash: { type: 'string' },
     rpc: { type: 'string' }, wallet: { type: 'string' }, query: { type: 'string' },
     broadcast: { type: 'boolean' }, help: { type: 'boolean', short: 'h' },
   },

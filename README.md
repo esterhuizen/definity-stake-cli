@@ -58,6 +58,26 @@ Options:
 
 **Safe by default.** Every command *simulates* the transaction and prints the result. Add `--broadcast` to sign and send for real.
 
+## Treasuries, hardware wallets & multisig (offline signing)
+
+For a treasury you should never hand a raw key to a CLI. Pass **`--owner <pubkey>`** instead of a keypair and `direct-stake` runs in **build-only** mode: **no private key is loaded**, and it prints a full decode plus an **unsigned, serialized transaction (base64)** for you to verify and sign offline (Ledger, air-gapped, or a Squads multisig).
+
+```bash
+definity-stake direct-stake \
+  --validator BDn3HiXMTym7ZQofWFxDb7ZGQX6GomQzJYKfytTAqd5g --amount 1 \
+  --owner <yourTreasuryPubkey>
+```
+
+It emits:
+
+- a human-readable decode — fee payer/owner, amount, the definSOL recipient ATA, the exact `direct:<vote>` memo, the recent blockhash, and each instruction (create-ATA · Sanctum `DepositSol` ix 14 · memo);
+- a **simulation** of the *unsigned* transaction (`sigVerify` off) so you can see it lands before signing;
+- the **base64 unsigned transaction**, which you can independently decode to confirm the accounts, amount and memo, then sign offline and broadcast.
+
+The instruction set is **byte-identical** to the signed path (both build from the same code), so what you verify is what executes. The recent blockhash expires in ~60–90s — refresh it in your signer if needed, or build fully offline with **`--blockhash <hash>`** (skips the RPC fetch and simulation).
+
+> **Reproducibility.** Dependencies are pinned to exact versions and the `package-lock.json` is committed. Each release is a git tag (e.g. `v0.3.0`) — build from the tag for a verifiable, reproducible install.
+
 ## Examples
 
 ```bash
@@ -71,6 +91,10 @@ definity-stake direct-stake \
 # Send it
 definity-stake direct-stake \
   --validator BDn3HiXMTym7ZQofWFxDb7ZGQX6GomQzJYKfytTAqd5g --amount 1 --broadcast
+
+# Treasury: build an UNSIGNED tx to verify + sign offline (no key loaded)
+definity-stake direct-stake \
+  --validator BDn3HiXMTym7ZQofWFxDb7ZGQX6GomQzJYKfytTAqd5g --amount 1 --owner <treasuryPubkey>
 
 # Check what you hold + what's directed
 definity-stake balance
