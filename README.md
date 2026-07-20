@@ -1,5 +1,7 @@
 # definity-stake
 
+[![npm](https://img.shields.io/npm/v/@definity/stake.svg)](https://www.npmjs.com/package/@definity/stake)
+
 A command-line staking tool for [Definity](https://definity.finance) — for treasuries, validators, and scripts that stake from a keypair instead of a browser.
 
 Its point of difference over the generic `spl-stake-pool` CLI is **direct staking**: a deposit that routes pool stake onto a validator *you* choose, then earns up to 3.5× matching on top. That works by attaching a `direct:<validatorVote>` memo to the deposit — something no off-the-shelf stake-pool CLI does — so this is the only tool that can direct-stake into the definSOL pool.
@@ -8,15 +10,34 @@ It builds the exact transaction the definity.finance direct-stake widget builds 
 
 ## Install
 
+Published on npm as **[`@definity/stake`](https://www.npmjs.com/package/@definity/stake)**. Requires Node ≥ 18.
+
+Run it without installing anything:
+
 ```bash
-git clone <this-repo> && cd definity-stake-cli && npm install
-./bin/definity-stake.mjs --help
-# or link it: npm link  → then `definity-stake …`
+npx @definity/stake --help
 ```
 
-Requires Node ≥ 18.
+Or install it globally to get a `definity-stake` command on your PATH:
+
+```bash
+npm install -g @definity/stake
+definity-stake --help
+```
+
+<details>
+<summary>From source</summary>
+
+```bash
+git clone https://github.com/esterhuizen/definity-stake-cli.git
+cd definity-stake-cli && npm install
+./bin/definity-stake.mjs --help    # or `npm link` → then `definity-stake …`
+```
+</details>
 
 ## Usage
+
+The command is `definity-stake` when installed globally, or `npx @definity/stake` without installing — identical otherwise.
 
 ```
 definity-stake <command> [options]
