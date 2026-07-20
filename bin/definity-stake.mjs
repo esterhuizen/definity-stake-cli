@@ -98,6 +98,20 @@ async function submit(conn, signer, instructions, broadcast) {
   return { signature: sig };
 }
 
+// Poll a signature to confirmation — used for txs we didn't build the lifetime
+// for (e.g. Jupiter's swap), so a `sent` result means it actually landed.
+async function confirmSig(conn, signature, timeoutMs = 60_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const { value } = await conn.getSignatureStatuses([signature]);
+    const s = value[0];
+    if (s?.err) throw new Error(`transaction failed on-chain: ${JSON.stringify(s.err)}`);
+    if (s?.confirmationStatus === 'confirmed' || s?.confirmationStatus === 'finalized') return;
+    await new Promise((r) => setTimeout(r, 1500));
+  }
+  throw new Error(`confirmation timed out (it may still land — check https://solscan.io/tx/${signature})`);
+}
+
 async function cmdDirectStake({ validator, amount, keypair, rpc: url, broadcast }) {
   if (!validator || !B58_RE.test(validator)) die('--validator <vote-pubkey> is required');
   const amt = Number(amount);
@@ -154,6 +168,8 @@ async function cmdUnstake({ amount, keypair, rpc: url, broadcast }) {
     return report({ simulated: true, err: value.err, unitsConsumed: value.unitsConsumed });
   }
   const sig = await conn.sendRawTransaction(tx.serialize(), { maxRetries: 5 });
+  console.log('  submitted — confirming…');
+  await confirmSig(conn, sig);
   report({ signature: sig });
 }
 
