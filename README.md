@@ -24,7 +24,8 @@ definity-stake <command> [options]
 Commands:
   direct-stake --validator <vote> --amount <SOL>   deposit, directed to a validator (+ up to 3.5× matching)
   stake        --amount <SOL>                       plain liquid-stake (definSOL, no direction)
-  unstake      --amount <definSOL>                  redeem definSOL → SOL (Jupiter, redeems at ~NAV)
+  unstake      --amount <definSOL>                  redeem some definSOL → SOL (Jupiter, redeems at ~NAV)
+  unstake-all                                        redeem your ENTIRE definSOL balance → SOL (no dust)
   balance      [--wallet <addr>]                    definSOL held + directed positions
   validators   [--query <text>]                     list Definity's vetted validator set
 
@@ -55,6 +56,9 @@ definity-stake balance
 
 # Exit: redeem 5 definSOL back to SOL
 definity-stake unstake --amount 5 --broadcast
+
+# Full exit: redeem your entire definSOL balance (exact, no dust left over)
+definity-stake unstake-all --broadcast
 ```
 
 ## How direct staking settles

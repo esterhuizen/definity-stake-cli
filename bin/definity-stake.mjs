@@ -146,14 +146,12 @@ async function cmdStake({ amount, keypair, rpc: url, broadcast }) {
   report(await submit(conn, signer, ixs, broadcast));
 }
 
-async function cmdUnstake({ amount, keypair, rpc: url, broadcast }) {
-  const amt = Number(amount);
-  if (!(amt > 0)) die('--amount <definSOL> must be > 0');
-  const signer = loadKeypair(keypair);
-  const conn = rpc(url);
-  const lamports = Math.round(amt * LAMPORTS_PER_SOL);
-  const q = await fetch(`${JUP}/quote?inputMint=${DEFINSOL_MINT.toBase58()}&outputMint=${WSOL}&amount=${lamports}&slippageBps=50`).then((r) => r.json());
+// Core unstake: redeem `definsolLamports` (base units) of definSOL → SOL via a
+// Jupiter swap. Shared by `unstake` (an amount) and `unstake-all` (full balance).
+async function doUnstake(conn, signer, definsolLamports, broadcast) {
+  const q = await fetch(`${JUP}/quote?inputMint=${DEFINSOL_MINT.toBase58()}&outputMint=${WSOL}&amount=${definsolLamports}&slippageBps=50`).then((r) => r.json());
   if (!q?.outAmount) die('no swap route for that amount');
+  const inDef = definsolLamports / LAMPORTS_PER_SOL;
   const outSol = Number(q.outAmount) / LAMPORTS_PER_SOL;
   const { swapTransaction } = await fetch(`${JUP}/swap`, {
     method: 'POST', headers: { 'content-type': 'application/json' },
@@ -162,7 +160,7 @@ async function cmdUnstake({ amount, keypair, rpc: url, broadcast }) {
   if (!swapTransaction) die('Jupiter did not return a swap transaction');
   const tx = VersionedTransaction.deserialize(Buffer.from(swapTransaction, 'base64'));
   tx.sign([signer]);
-  console.log(`unstake ${amt} definSOL → ~${outSol.toFixed(4)} SOL (Jupiter swap, ${(Number(q.priceImpactPct) * 100).toFixed(3)}% impact)`);
+  console.log(`unstake ${inDef} definSOL → ~${outSol.toFixed(4)} SOL (Jupiter swap, ${(Number(q.priceImpactPct) * 100).toFixed(3)}% impact)`);
   if (!broadcast) {
     const { value } = await conn.simulateTransaction(tx, { sigVerify: false, replaceRecentBlockhash: true });
     return report({ simulated: true, err: value.err, unitsConsumed: value.unitsConsumed });
@@ -171,6 +169,28 @@ async function cmdUnstake({ amount, keypair, rpc: url, broadcast }) {
   console.log('  submitted — confirming…');
   await confirmSig(conn, sig);
   report({ signature: sig });
+}
+
+// Full definSOL balance held by `owner`, in base units (exact — avoids dust).
+async function definsolBalanceLamports(conn, owner) {
+  const accts = await conn.getParsedTokenAccountsByOwner(owner, { mint: DEFINSOL_MINT });
+  return accts.value.reduce((a, x) => a + Number(x.account.data.parsed.info.tokenAmount.amount), 0);
+}
+
+async function cmdUnstake({ amount, keypair, rpc: url, broadcast }) {
+  const amt = Number(amount);
+  if (!(amt > 0)) die('--amount <definSOL> must be > 0 (or use `unstake-all`)');
+  const signer = loadKeypair(keypair);
+  await doUnstake(rpc(url), signer, Math.round(amt * LAMPORTS_PER_SOL), broadcast);
+}
+
+async function cmdUnstakeAll({ keypair, rpc: url, broadcast }) {
+  const signer = loadKeypair(keypair);
+  const conn = rpc(url);
+  const lamports = await definsolBalanceLamports(conn, signer.publicKey);
+  if (lamports <= 0) die('no definSOL held — nothing to unstake');
+  console.log(`unstake-all: full balance of ${lamports / LAMPORTS_PER_SOL} definSOL from ${signer.publicKey.toBase58()}`);
+  await doUnstake(conn, signer, lamports, broadcast);
 }
 
 async function cmdBalance({ wallet, keypair, rpc: url }) {
@@ -205,7 +225,8 @@ const HELP = `definity-stake — Definity staking CLI
 Commands:
   direct-stake --validator <vote> --amount <SOL>   deposit, directed to a validator (+ up to 3.5× matching)
   stake        --amount <SOL>                       plain liquid-stake (definSOL, no direction)
-  unstake      --amount <definSOL>                  redeem definSOL → SOL (Jupiter, redeems at ~NAV)
+  unstake      --amount <definSOL>                  redeem some definSOL → SOL (Jupiter, redeems at ~NAV)
+  unstake-all                                        redeem your ENTIRE definSOL balance → SOL (no dust)
   balance      [--wallet <addr>]                    definSOL held + directed positions
   validators   [--query <text>]                     list Definity's vetted validator set
 
@@ -231,7 +252,7 @@ const { values, positionals } = parseArgs({
 const cmd = positionals[0];
 if (values.help || !cmd) { console.log(HELP); process.exit(0); }
 
-const commands = { 'direct-stake': cmdDirectStake, stake: cmdStake, unstake: cmdUnstake, balance: cmdBalance, validators: cmdValidators };
+const commands = { 'direct-stake': cmdDirectStake, stake: cmdStake, unstake: cmdUnstake, 'unstake-all': cmdUnstakeAll, balance: cmdBalance, validators: cmdValidators };
 const run = commands[cmd];
 if (!run) die(`unknown command "${cmd}". Run --help.`);
 run(values).catch((e) => die(e.message));
