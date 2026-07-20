@@ -1,0 +1,18 @@
+{
+  "name": "@definity/stake-cli",
+  "version": "0.1.0",
+  "description": "Definity staking CLI — deposit SOL directed to a validator you choose (the direct: memo model), plus liquid-stake and unstake, from a keypair.",
+  "type": "module",
+  "bin": {
+    "definity-stake": "bin/definity-stake.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "UNLICENSED",
+  "private": true,
+  "dependencies": {
+    "@solana/spl-token": "^0.4.9",
+    "@solana/web3.js": "^1.95.3"
+  }
+}
