@@ -1,16 +1,41 @@
 {
-  "name": "@definity/stake-cli",
+  "name": "@definity/stake",
   "version": "0.1.0",
   "description": "Definity staking CLI — deposit SOL directed to a validator you choose (the direct: memo model), plus liquid-stake and unstake, from a keypair.",
   "type": "module",
   "bin": {
     "definity-stake": "bin/definity-stake.mjs"
   },
+  "files": [
+    "bin/",
+    "README.md"
+  ],
   "engines": {
     "node": ">=18"
   },
+  "keywords": [
+    "solana",
+    "staking",
+    "stake-pool",
+    "definity",
+    "definSOL",
+    "liquid-staking",
+    "direct-staking",
+    "cli"
+  ],
+  "homepage": "https://definity.finance",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/esterhuizen/definity-stake-cli.git"
+  },
+  "bugs": {
+    "url": "https://github.com/esterhuizen/definity-stake-cli/issues"
+  },
+  "author": "Definity",
   "license": "UNLICENSED",
-  "private": true,
+  "publishConfig": {
+    "access": "public"
+  },
   "dependencies": {
     "@solana/spl-token": "^0.4.9",
     "@solana/web3.js": "^1.95.3"
