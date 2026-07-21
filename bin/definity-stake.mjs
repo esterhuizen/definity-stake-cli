@@ -300,10 +300,10 @@ Build-only (treasuries / hardware / multisig — NO private key is loaded):
     (skips the RPC fetch + simulation).
 
 Examples:
-  definity-stake validators --query stakecraft
-  definity-stake direct-stake --validator BDn3HiXMTym7ZQofWFxDb7ZGQX6GomQzJYKfytTAqd5g --amount 1
-  definity-stake direct-stake --validator BDn3Hi… --amount 1 --broadcast
-  definity-stake direct-stake --validator BDn3Hi… --amount 1 --owner <treasuryPubkey>   # unsigned
+  definity-stake validators --query <name-or-city>
+  definity-stake direct-stake --validator <validatorVote> --amount 1
+  definity-stake direct-stake --validator <validatorVote> --amount 1 --broadcast
+  definity-stake direct-stake --validator <validatorVote> --amount 1 --owner <treasuryPubkey>   # unsigned
 `;
 
 const { values, positionals } = parseArgs({

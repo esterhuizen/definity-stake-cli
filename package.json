@@ -1,6 +1,6 @@
 {
   "name": "@definity/stake",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Definity staking CLI — deposit SOL directed to a validator you choose (the direct: memo model), from a keypair OR build-only (--owner) for offline/hardware/multisig signing, plus liquid-stake and unstake.",
   "type": "module",
   "bin": {
