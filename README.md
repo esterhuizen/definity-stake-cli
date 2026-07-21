@@ -64,7 +64,7 @@ For a treasury you should never hand a raw key to a CLI. Pass **`--owner <pubkey
 
 ```bash
 definity-stake direct-stake \
-  --validator BDn3HiXMTym7ZQofWFxDb7ZGQX6GomQzJYKfytTAqd5g --amount 1 \
+  --validator <validatorVote> --amount 1 \
   --owner <yourTreasuryPubkey>
 ```
 
@@ -81,20 +81,20 @@ The instruction set is **byte-identical** to the signed path (both build from th
 ## Examples
 
 ```bash
-# Find a validator to back
-definity-stake validators --query stakecraft
+# Find a validator to back (filter the vetted set by name, city, or country)
+definity-stake validators --query <name-or-city>
 
 # Dry-run a 1 SOL direct stake (simulates, no funds move)
 definity-stake direct-stake \
-  --validator BDn3HiXMTym7ZQofWFxDb7ZGQX6GomQzJYKfytTAqd5g --amount 1
+  --validator <validatorVote> --amount 1
 
 # Send it
 definity-stake direct-stake \
-  --validator BDn3HiXMTym7ZQofWFxDb7ZGQX6GomQzJYKfytTAqd5g --amount 1 --broadcast
+  --validator <validatorVote> --amount 1 --broadcast
 
 # Treasury: build an UNSIGNED tx to verify + sign offline (no key loaded)
 definity-stake direct-stake \
-  --validator BDn3HiXMTym7ZQofWFxDb7ZGQX6GomQzJYKfytTAqd5g --amount 1 --owner <treasuryPubkey>
+  --validator <validatorVote> --amount 1 --owner <treasuryPubkey>
 
 # Check what you hold + what's directed
 definity-stake balance
